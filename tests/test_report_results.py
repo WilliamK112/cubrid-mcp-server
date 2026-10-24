@@ -118,10 +118,50 @@ def test_missing_junit_is_incomplete_after_success_and_fail_after_failure(tmp_pa
     assert summarize(tmp_path, 0)["status"] == "INCOMPLETE"
 
 
+def test_explicit_junit_path_is_used(tmp_path: Path) -> None:
+    junit_path = tmp_path / "other.xml"
+    junit(tmp_path, "pass").replace(junit_path)
+
+    summary = summarize(tmp_path, 0, "--junit", str(junit_path))
+
+    assert summary["status"] == "PASS"
+    assert summary["counts"]["selected"] == 1
+    assert summary["counts"]["passed"] == 1
+
+
 def test_coverage_is_omitted_when_not_measured(tmp_path: Path) -> None:
     junit(tmp_path, "pass")
     assert "coverage" not in summarize(tmp_path, 0)
     assert "coverage" not in summarize(tmp_path, 0, "--coverage", str(tmp_path / "none.xml"))
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["<coverage/>", "<coverage line-rate='abc'/>", "not xml"],
+    ids=["missing-rate", "non-numeric-rate", "invalid-xml"],
+)
+def test_unusable_coverage_is_omitted_without_changing_status(tmp_path: Path, content: str) -> None:
+    junit(tmp_path, "pass")
+    coverage = tmp_path / "coverage.xml"
+    coverage.write_text(content)
+
+    summary = summarize(tmp_path, 0, "--coverage", str(coverage))
+
+    assert summary["status"] == "PASS"
+    assert "coverage" not in summary
+
+
+def test_coverage_is_rounded_and_printed_to_two_decimals(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    junit(tmp_path, "pass")
+    coverage = tmp_path / "coverage.xml"
+    coverage.write_text("<coverage line-rate='0.97126'/>")
+
+    summary = summarize(tmp_path, 0, "--coverage", str(coverage))
+
+    assert summary["coverage"] == {"line_percent": 97.13}
+    assert "coverage=97.13%" in capsys.readouterr().out
 
 
 def test_environment_json_never_contains_credentials(
@@ -140,6 +180,16 @@ def test_environment_json_never_contains_credentials(
     assert data["cubrid_version"] == "11.4"
     assert data["package"]["version"] == report.package_version() != "unknown"
     assert {"python", "platform", "command", "lane", "schema_version"} <= set(data)
+
+
+def test_environment_without_cubrid_version_writes_null(tmp_path: Path) -> None:
+    code = report.main(
+        ["environment", "--lane", "t", "--results-dir", str(tmp_path), "--command", "test"]
+    )
+
+    assert code == 0
+    data = json.loads((tmp_path / "environment.json").read_text())
+    assert data["cubrid_version"] is None
 
 
 def test_script_runs_standalone_and_keeps_exit_status_zero(tmp_path: Path) -> None:
