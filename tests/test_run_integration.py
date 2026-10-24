@@ -194,6 +194,47 @@ def test_missing_docker_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert status == 127
 
 
+def test_main_preserves_ignored_signal_and_restores_handlers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handlers: dict[signal.Signals, object] = {
+        signal.SIGINT: signal.default_int_handler,
+        signal.SIGTERM: signal.SIG_IGN,
+    }
+    observed: dict[signal.Signals, object] = {}
+
+    def getsignal(sig: signal.Signals) -> object:
+        return handlers[sig]
+
+    def install(sig: signal.Signals, handler: object) -> object:
+        previous = handlers[sig]
+        handlers[sig] = handler
+        return previous
+
+    real_lane = run_integration._lane
+
+    def lane(args: Any, project: str) -> int:
+        observed.update(handlers)
+        return real_lane(args, project)
+
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr(run_integration.signal, "getsignal", getsignal)
+    monkeypatch.setattr(run_integration.signal, "signal", install)
+    monkeypatch.setattr(run_integration, "_lane", lane)
+
+    before = {sig: run_integration.signal.getsignal(sig) for sig in handlers}
+    assert (
+        run_integration.main(["--cubrid-version", "11.4", "--port", "1", "--pytest", "true"]) == 127
+    )
+
+    assert observed == {
+        signal.SIGINT: run_integration._interrupt,
+        signal.SIGTERM: signal.SIG_IGN,
+    }
+    assert {sig: run_integration.signal.getsignal(sig) for sig in handlers} == before
+
+
 def test_runner_uses_the_docker_up_service() -> None:
     assert (ROOT / run_integration.COMPOSE_FILE).is_file()
     assert run_integration.SERVICE == "cubrid"
