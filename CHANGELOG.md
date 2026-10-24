@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### CI
+
+- **The temporary `last-release-sha` override is removed after 0.5.4 (#388)** — `v0.5.4` is published, and the release run verified it against the cookbook, so the next candidate starts from that tag. The override for the abandoned 0.5.3 (`8633db6`) is no longer needed, and leaving it in place would make a later recovery start from a stale base (RELEASING.md, "A merged X.Y.Z is abandoned"). Refs #388.
+
+## [0.5.4] - 2026-10-24
+
 ### Upgrade notes
+
+- **0.5.3 was never published (#388).** Its cookbook candidate verification failed: the pinned cookbook commit predated the cookbook's pandas 3.1 golden fix (cubrid-lab/cubrid-cookbook-python#444), so no 0.5.3 tag, GitHub Release or PyPI version exists. 0.5.4 contains every 0.5.3 change below; upgrade from 0.5.2 directly to 0.5.4.
 
 - **`make integration` needs Docker Compose and reads `CUBRID_TEST_PORT` (#402)** — it now runs `docker compose ... up --detach --wait`, so it needs the Docker Compose plugin (v2 or later) as well as Docker. Its port is `CUBRID_TEST_PORT` (default 33000), the variable `make docker-up` already uses, so a `CUBRID_TEST_PORT` exported for a running lab also moves `make integration` onto that port (pass another one). `INTEGRATION_PORT` still works and wins when set. Refs #402.
 
@@ -29,9 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The Makefile is the canonical local and CI interface (#379)** — new targets: `doctor` (checks Python 3.11+, `ruff`, `mypy`, `pytest`, `pytest-cov` and `pytest-asyncio`; exits non-zero without a success line if any is missing), `format-check` (`ruff format --check .`), `verify` (`check` + `test`, no Docker), `integration` (the run-owned Docker lifecycle in `scripts/run_integration.py`: start, readiness wait, `pytest -m integration -v`, the container log on a failure, removal of the container and its anonymous volumes on success, failure, SIGINT or SIGTERM; the first failing step's exit status, or 128 + the signal number) and `integration-local`. `lint`, `format-check` and `typecheck` use the same paths and flags as CI, `format` is the only target that edits files, `test` takes extra pytest arguments in `PYTEST_ARGS`, `clean` also removes `.ruff_cache`, `.coverage`, `coverage.xml` and `htmlcov` (all gitignored, generated files), and `make help` groups the targets by purpose. Refs #379.
 
+* remove the App-owned agent-review publisher ([#397](https://github.com/cubrid-lab/cubrid-mcp-server/issues/397)) ([e5bf28e](https://github.com/cubrid-lab/cubrid-mcp-server/commit/e5bf28e006f8c005c7d9334ed87ee3531bf61eb2))
+
 ### Fixed
 
 - **A failed service-log save no longer skips `make integration` cleanup** — with `--results-dir`, an I/O error while writing `logs/cubrid.log` after a failing lane used to escape before `docker compose down --volumes`, leaving the run-owned project behind and losing the lane's exit status. Saving the log is now best-effort: the error is printed as a warning, the project is still taken down and the summary keeps the lane's status.
+
+* **test:** never let a failed service-log save skip make integration cleanup ([#416](https://github.com/cubrid-lab/cubrid-mcp-server/issues/416)) ([dec3942](https://github.com/cubrid-lab/cubrid-mcp-server/commit/dec39420852edc175e36f5d9afa5953685c7c937))
 
 ### Documentation
 
@@ -39,7 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Make targets in the contributor docs (#379)** — `CONTRIBUTING.md`, `AGENTS.md`, the PR template and the README development section (English and Korean) describe the new targets, the `make integration` variables and that CI calls the same targets. Refs #379.
 
+* **agents:** require repository-local issue authoring checks ([#383](https://github.com/cubrid-lab/cubrid-mcp-server/issues/383)) ([4f04af7](https://github.com/cubrid-lab/cubrid-mcp-server/commit/4f04af7b503cae0e2fcc97b79326a629d9e68aea))
+* enforce repository-local issue drafting ([4f04af7](https://github.com/cubrid-lab/cubrid-mcp-server/commit/4f04af7b503cae0e2fcc97b79326a629d9e68aea))
+* **ko:** replace the mistranslated redaction term in the Korean docs ([#389](https://github.com/cubrid-lab/cubrid-mcp-server/issues/389)) ([2621d8b](https://github.com/cubrid-lab/cubrid-mcp-server/commit/2621d8b415a1dcf7ea8a34fab758126bb6b5f216)), refs [#290](https://github.com/cubrid-lab/cubrid-mcp-server/issues/290)
+* **triage:** clarify PR overlap and execution precedence ([440166a](https://github.com/cubrid-lab/cubrid-mcp-server/commit/440166adcf3b8a1e51cda51353a2c4f762adec40)), refs [#410](https://github.com/cubrid-lab/cubrid-mcp-server/issues/410)
+
 ### CI
+
+- **The release workflow verifies against the current cookbook, and preparation restarts after the abandoned 0.5.3 (#388)** — 0.5.3 was not published: its cookbook candidate verification failed at the pinned cookbook commit `0d8b5bb`, which predates the cookbook's pandas 3.1 golden fix (cubrid-lab/cubrid-cookbook-python#444), so nothing was tagged, released or uploaded. Both `smoke-test.yml@` pins in `publish-pypi.yml` (`verify-candidate` and `verify-cookbook`) move to cookbook `main` `fbaaa8c`; the called workflow's inputs and outputs are unchanged. The top-level `last-release-sha` in `release-please-config.json` is set to the 0.5.3 merge `8633db6` so the next candidate starts after it (RELEASING.md, "A merged X.Y.Z is abandoned"); remove it after the next release is tagged. Refs #388.
+
+* **release:** verify against the current cookbook and restart after the abandoned 0.5.3 ([#424](https://github.com/cubrid-lab/cubrid-mcp-server/issues/424)) ([1d1e5a1](https://github.com/cubrid-lab/cubrid-mcp-server/commit/1d1e5a18f1496a9b4a5c6f5794bd488edbf020cd)), refs [#388](https://github.com/cubrid-lab/cubrid-mcp-server/issues/388)
 
 - **CI publishes and uploads the test results (#405)** — the `lint-and-test` job and both `integration` jobs (`ci.yml`, `integration-full.yml`) now append the one-line `test-results/*/summary.json` summary to the run's job summary (`scripts/report_results.py step-summary`) and upload `test-results/` with `actions/upload-artifact` (the commit already pinned in `publish-pypi.yml`, v7) on every run, pass or fail, as one `test-results-...` artifact per matrix entry kept for 7 days. No permissions, secrets or triggers change, and the Codecov upload is unchanged. Closes #405.
 
